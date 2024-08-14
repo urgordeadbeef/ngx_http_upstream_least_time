@@ -9,8 +9,6 @@
                                     + ((p)->next ? (p)->next->tries : 0))
 
 
-static ngx_http_upstream_least_time_peer_t *ngx_http_upstream_get_peer(
-    ngx_http_upstream_least_time_peer_data_t *ltp);
 static char *ngx_http_upstream_least_time(ngx_conf_t *cf, ngx_command_t *cmd, 
     void *conf);
 #if (NGX_HTTP_UPSTREAM_ZONE)
@@ -297,11 +295,11 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
         /*
          * select peer with least response time; if there are
          * multiple peers with the same response, select
-         * based on round-robin
+         * based on mininal connect number
          */
 
         if (best == NULL
-            || peer->avg_time * best->rr->weight < best->avg_time * peer->rr->weight)
+            || (peer->avg_time * best->rr->weight < best->avg_time * peer->rr->weight))
         {
             best = peer;
             many = 0;
@@ -338,7 +336,11 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
                 continue;
             }
 
-            if (peer->rr->conns * best->rr->weight > best->rr->conns * peer->rr->weight) {
+            if (peer->avg_time * best->rr->weight != best->avg_time * peer->rr->weight) {
+                continue;
+            }
+
+	    if (peer->rr->conns * best->rr->weight > best->rr->conns * peer->rr->weight) {
                 continue;
             }
 
