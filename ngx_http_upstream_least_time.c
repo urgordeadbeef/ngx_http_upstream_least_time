@@ -338,7 +338,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
                 continue;
             }
 
-            if (peer->rr->conns * best->rr->weight != best->rr->conns * peer->rr->weight) {
+            if (peer->rr->conns * best->rr->weight > best->rr->conns * peer->rr->weight) {
                 continue;
             }
 
