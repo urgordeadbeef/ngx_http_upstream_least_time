@@ -100,7 +100,6 @@ ngx_http_upstream_least_time_ref_peers(ngx_http_upstream_least_time_peers_t  *pe
     rrpeer = rrpeers->peer;
 
     for (n = 0; n < rrpeers->number; n++) {
-	peer[n].avg_time = 0;
 	peer[n].rr = rrpeer;
 
 	*peerp = &peer[n];
@@ -299,13 +298,17 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
          */
 
         if (best == NULL
-            || (peer->avg_time * best->rr->weight < best->avg_time * peer->rr->weight))
+            || (peer->avg_time * best->rr->weight < best->avg_time * peer->rr->weight
+	        && peer->rr->conns * best->rr->weight < best->rr->conns * peer->rr->weight)
+            || (peer->avg_time * best->rr->weight == best->avg_time * peer->rr->weight
+	        && peer->rr->conns * best->rr->weight < best->rr->conns * peer->rr->weight))
         {
             best = peer;
             many = 0;
             p = i;
 
-        } else if (peer->avg_time * best->rr->weight == best->avg_time * peer->rr->weight) {
+        } else if (peer->avg_time * best->rr->weight == best->avg_time * peer->rr->weight
+		  && peer->rr->conns * best->rr->weight == best->rr->conns * peer->rr->weight) {
             many = 1;
         }
     }
@@ -336,14 +339,11 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
                 continue;
             }
 
-            if (peer->avg_time * best->rr->weight != best->avg_time * peer->rr->weight) {
+	    if (peer->avg_time * best->rr->weight != best->avg_time * peer->rr->weight
+		&& peer->rr->conns * best->rr->weight != best->rr->conns * peer->rr->weight) {
                 continue;
             }
-
-	    if (peer->rr->conns * best->rr->weight > best->rr->conns * peer->rr->weight) {
-                continue;
-            }
-
+	    
             if (peer->rr->max_fails
                 && peer->rr->fails >= peer->rr->max_fails
                 && now - peer->rr->checked <= peer->rr->fail_timeout)
@@ -429,6 +429,18 @@ failed:
     return NGX_BUSY;
 }
 
+static inline void
+ngx_http_upstream_least_time_avg(ngx_http_upstream_least_time_peer_t *peer, ngx_msec_t time)
+{
+    if (0 == (peer->n + 1) || 0 == peer->n) {
+	peer->n = 1;
+	peer->avg_time = time;
+    } else {
+	peer->avg_time = (ngx_msec_t)(peer->avg_time*peer->n + time)/(peer->n + 1);
+	peer->n++;
+    }
+}
+
 void
 ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
     ngx_uint_t state)
@@ -440,6 +452,7 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
     ngx_http_upstream_t			 *u;
     ngx_uint_t				  inflight;
     ngx_event_pipe_t			 *p;
+    ngx_msec_t				  avg;
 
     peer = ltp->current;
     u = ltp->request->upstream;
@@ -454,17 +467,18 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
     ngx_http_upstream_free_round_robin_peer(pc, ltp->rrp, state);
     inflight = !(p->upstream_done || (p->upstream_eof && p->length == -1));
 
+
     switch (ltcf->config) {
     case NGX_LEAST_TIME_HEADER:
-	peer->avg_time = (u->state->header_time + peer->avg_time)/2;
+	ngx_http_upstream_least_time_avg(peer, u->state->header_time);
 	break;
     case NGX_LEAST_TIME_LAST_BYTE:
 	if (!inflight) {
-	    peer->avg_time =  (u->state->response_time + peer->avg_time)/2;
+	    ngx_http_upstream_least_time_avg(peer, u->state->response_time);
 	}
 	break;
     case NGX_LEAST_TIME_INFLIGHT_BYTES:
-	peer->avg_time =  (u->state->response_time + peer->avg_time)/2;
+	ngx_http_upstream_least_time_avg(peer, u->state->response_time);
 	break;
     default:
 	break;

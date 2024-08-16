@@ -28,7 +28,8 @@ typedef struct ngx_http_upstream_least_time_peer_s   ngx_http_upstream_least_tim
 struct ngx_http_upstream_least_time_peer_s {
     ngx_http_upstream_rr_peer_t		 *rr;
     ngx_http_upstream_least_time_peer_t  *next;
-    ngx_msec_t	avg_time;
+    ngx_msec_t				  avg_time;
+    size_t				  n;
 
     NGX_COMPAT_BEGIN(32)
     NGX_COMPAT_END
