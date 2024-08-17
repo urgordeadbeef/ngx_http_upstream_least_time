@@ -296,12 +296,13 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
          * multiple peers with the same response, select
          * based on mininal connect number
          */
-
         if (best == NULL
-            || (peer->avg_time * best->rr->weight < best->avg_time * peer->rr->weight
+            || ((peer->avg_time * best->rr->weight < best->avg_time * peer->rr->weight
 	        && peer->rr->conns * best->rr->weight < best->rr->conns * peer->rr->weight)
             || (peer->avg_time * best->rr->weight == best->avg_time * peer->rr->weight
-	        && peer->rr->conns * best->rr->weight < best->rr->conns * peer->rr->weight))
+	        && peer->rr->conns * best->rr->weight < best->rr->conns * peer->rr->weight)
+	    || (peer->avg_time * best->rr->weight < best->avg_time * peer->rr->weight 
+		&&  peer->rr->conns * best->rr->weight == best->rr->conns * peer->rr->weight)))
         {
             best = peer;
             many = 0;
