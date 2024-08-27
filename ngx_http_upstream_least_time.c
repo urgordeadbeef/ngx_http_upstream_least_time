@@ -470,15 +470,15 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
 
 
     switch (ltcf->config) {
-    case NGX_LEAST_TIME_HEADER:
+    case NGX_TTFB:
 	ngx_http_upstream_least_time_avg(peer, u->state->header_time);
 	break;
-    case NGX_LEAST_TIME_LAST_BYTE:
+    case NGX_TTLB:
 	if (!inflight) {
 	    ngx_http_upstream_least_time_avg(peer, u->state->response_time);
 	}
 	break;
-    case NGX_LEAST_TIME_INFLIGHT_BYTES:
+    case NGX_TTLB_INFLIGHT:
 	ngx_http_upstream_least_time_avg(peer, u->state->response_time);
 	break;
     default:
@@ -533,14 +533,14 @@ ngx_http_upstream_least_time(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     if (cf->args->nelts == 2 && value[1].len == (sizeof("header") - 1) && 
 	!ngx_strncmp(value[1].data, (u_char *)"header", sizeof("header") - 1)) {
-	ltcf->config = NGX_LEAST_TIME_HEADER;
+	ltcf->config = NGX_TTFB;
     } else if (value[1].len == (sizeof("last_byte") - 1) &&
 	       !ngx_strncmp(value[1].data, (u_char *)"last_byte", sizeof("last_byte") - 1)) {
 	if (cf->args->nelts == 3 && value[2].len == (sizeof("inflight") - 1) &&
 	    !ngx_strncmp(value[2].data, (u_char *)"inflight", sizeof("inflight") - 1)) {
-	    ltcf->config = NGX_LEAST_TIME_INFLIGHT_BYTES;
+	    ltcf->config = NGX_TTLB_INFLIGHT;
 	} else {
-	    ltcf->config = NGX_LEAST_TIME_LAST_BYTE;
+	    ltcf->config = NGX_TTLB;
 	}
     }
 

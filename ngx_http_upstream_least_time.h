@@ -14,9 +14,9 @@
 #include <ngx_http.h>
 
 enum {
-    NGX_LEAST_TIME_HEADER = 1,
-    NGX_LEAST_TIME_LAST_BYTE = 2,
-    NGX_LEAST_TIME_INFLIGHT_BYTES = 3,
+    NGX_TTFB = 1,
+    NGX_TTLB = 2,
+    NGX_TTLB_INFLIGHT = 3,
 };
 
 typedef struct {
