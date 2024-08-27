@@ -292,25 +292,25 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
         }
 
         /*
-         * select peer with least response time; if there are
-         * multiple peers with the same response, select
-         * based on mininal connect number
+         * select peer with least conns; if there are
+         * multiple peers with the same conns, select
+         * based on mininal avg response
          */
         if (best == NULL
-            || ((peer->avg_time * best->rr->weight < best->avg_time * peer->rr->weight
-	        && peer->rr->conns * best->rr->weight < best->rr->conns * peer->rr->weight)
-            || (peer->avg_time * best->rr->weight == best->avg_time * peer->rr->weight
-	        && peer->rr->conns * best->rr->weight < best->rr->conns * peer->rr->weight)
-	    || (peer->avg_time * best->rr->weight < best->avg_time * peer->rr->weight 
-		&&  peer->rr->conns * best->rr->weight == best->rr->conns * peer->rr->weight)))
+            || peer->rr->conns * best->rr->weight < best->rr->conns * peer->rr->weight)
         {
             best = peer;
             many = 0;
             p = i;
 
-        } else if (peer->avg_time * best->rr->weight == best->avg_time * peer->rr->weight
-		  && peer->rr->conns * best->rr->weight == best->rr->conns * peer->rr->weight) {
-            many = 1;
+        } else if (peer->rr->conns * best->rr->weight == best->rr->conns * peer->rr->weight) {
+	    if (peer->avg_time < best->avg_time) {
+		best = peer;
+		many = 0;
+		p = i;
+	    } else {
+		many = 1;
+	    }
         }
     }
 
@@ -340,7 +340,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
                 continue;
             }
 
-	    if (peer->avg_time * best->rr->weight != best->avg_time * peer->rr->weight
+	    if (peer->avg_time != best->avg_time 
 		&& peer->rr->conns * best->rr->weight != best->rr->conns * peer->rr->weight) {
                 continue;
             }

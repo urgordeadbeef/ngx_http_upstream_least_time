@@ -8,7 +8,8 @@ least_time
 * Default: 	—
 * Context: 	upstream
 
-A load balancing method by the least average response time
+A load balancing method by the lowest average response time and the lowest
+number of active connections
 
 If the header parameter is specified, time to receive the response header is
 used. If the last_byte parameter is specified, time to receive the full
