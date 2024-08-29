@@ -308,7 +308,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 		best = peer;
 		many = 0;
 		p = i;
-	    } else {
+	    } else if (peer->avg_time == best->avg_time) {
 		many = 1;
 	    }
         }
