@@ -468,6 +468,7 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
     ngx_http_upstream_free_round_robin_peer(pc, ltp->rrp, state);
     inflight = !(p->upstream_done || (p->upstream_eof && p->length == -1));
 
+    ngx_http_upstream_rr_peer_lock(ltp->peers->rr, peer->rr);
 
     switch (ltcf->config) {
     case NGX_TTFB:
@@ -484,6 +485,8 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
     default:
 	break;
     }
+    ngx_http_upstream_rr_peer_unlock(ltp->peers->rr, peer->rr);
+
     ngx_log_debug4(NGX_LOG_DEBUG_HTTP, pc->log, 0,
                    "free least time peer %p  avg time %ui config %ui inflight %ui", 
 		   peer, peer->avg_time, ltcf->config, inflight);
@@ -493,21 +496,71 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
 static ngx_int_t
 ngx_http_upstream_least_time_init_zone(ngx_shm_zone_t *shm_zone, void *data) 
 {
-    ngx_http_upstream_rr_peers_t	   *rrpeers;
-    ngx_http_upstream_least_time_peers_t   *peers;
+    ngx_http_upstream_least_time_peers_t   *peers, *backup;
+    ngx_http_upstream_rr_peers_t	   *rr;
+    ngx_http_upstream_least_time_peer_t    *peer;
     ngx_http_upstream_srv_conf_t	   *uscf, **uscfp;
     ngx_http_upstream_main_conf_t	   *umcf;
     ngx_http_upstream_least_time_zone_t	   *z = shm_zone->data;
-    
+    ngx_slab_pool_t			   *shpool;
+
     z->u->peer.data = z->peers->rr;
     shm_zone->data = z->data;
+
+    shpool = (ngx_slab_pool_t *) shm_zone->shm.addr;
+
+    if (shm_zone->shm.exists) {
+	ngx_log_debug0(NGX_LOG_DEBUG_HTTP, ngx_cycle->log, 0, "least time shm zone exist");
+	peers = (ngx_http_upstream_least_time_peers_t *) shpool->data;
+	z->u->peer.data = peers;
+	return NGX_OK;
+    }
+
     if (z->init(shm_zone, data) == NGX_ERROR) {
 	return NGX_ERROR;
     }
-       
-    ngx_http_upstream_least_time_ref_peers(z->peers, z->u->peer.data);
-    z->u->peer.data = z->peers;
+
+    rr = z->peers->rr;
+
+    peers = ngx_slab_alloc(shpool, sizeof(ngx_http_upstream_least_time_peers_t));
+    if (peers == NULL) {
+	return NGX_ERROR;
+    }
+    ngx_memzero(peers, sizeof(ngx_http_upstream_least_time_peers_t));
+
+    peer = ngx_slab_alloc(shpool, sizeof(ngx_http_upstream_least_time_peer_t) * rr->number);
+    if (peer == NULL) {
+	return NGX_ERROR;
+    }
+    ngx_memzero(peer, sizeof(ngx_http_upstream_least_time_peers_t) * rr->number);
+
+    peers->peer = peer;
+    ngx_http_upstream_least_time_ref_peers(peers, rr);
+
+    z->u->peer.data = z->peers = peers;
     shm_zone->data = z;
+    shpool->data = peers;
+    rr = z->peers->rr->next;
+
+    if (!rr) {
+	return NGX_OK;
+    }
+
+    backup = ngx_slab_alloc(shpool, sizeof(ngx_http_upstream_least_time_peers_t));
+    if (backup == NULL) {
+	return NGX_ERROR;
+    }
+    ngx_memzero(backup, sizeof(ngx_http_upstream_least_time_peers_t));
+
+    peer = ngx_slab_alloc(shpool, sizeof(ngx_http_upstream_least_time_peer_t) * rr->number);
+    if (peer == NULL) {
+	return NGX_ERROR;
+    }
+    ngx_memzero(peer, sizeof(ngx_http_upstream_least_time_peers_t) * rr->number);
+
+    backup->peer = peer;
+    ngx_http_upstream_least_time_ref_peers(backup, rr);
+    peers->next = backup;
 
     return NGX_OK;
 }
