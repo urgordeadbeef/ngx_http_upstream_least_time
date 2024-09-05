@@ -25,11 +25,18 @@ typedef struct {
 
 typedef struct ngx_http_upstream_least_time_peer_s   ngx_http_upstream_least_time_peer_t;
 
+#define MAX_SAMPLES	    16
+#define MAX_SAMPLES_MASK    (MAX_SAMPLES - 1)
+
 struct ngx_http_upstream_least_time_peer_s {
     ngx_http_upstream_rr_peer_t		 *rr;
     ngx_http_upstream_least_time_peer_t  *next;
     ngx_msec_t				  avg_time;
-    size_t				  n;
+    ngx_msec_t				  sum;
+    ngx_msec_t				  samples[MAX_SAMPLES];
+    u_short				  h;
+    u_short				  t;
+    u_short				  n;
 
     NGX_COMPAT_BEGIN(32)
     NGX_COMPAT_END
