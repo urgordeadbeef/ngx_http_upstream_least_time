@@ -301,14 +301,14 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
             p = i;
 
         } else if (peer->rr->conns * best->rr->weight == best->rr->conns * peer->rr->weight) {
-	    if (peer->avg_time * peer->rr->conns * best->rr->weight <
-		best->avg_time * best->rr->conns * peer->rr->weight)
+	    if (peer->ema * peer->rr->conns * best->rr->weight <
+		best->ema * best->rr->conns * peer->rr->weight)
 	    {
 		best = peer;
 		many = 0;
 		p = i;
-	    } else if (peer->avg_time * peer->rr->conns * best->rr->weight ==
-		       best->avg_time * best->rr->conns * peer->rr->weight) {
+	    } else if (peer->ema * peer->rr->conns * best->rr->weight ==
+		       best->ema * best->rr->conns * peer->rr->weight) {
 		many = 1;
 	    }
         }
@@ -340,8 +340,8 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
                 continue;
             }
 
-	    if (peer->avg_time * peer->rr->conns * best->rr->weight !=
-		best->avg_time * best->rr->conns * peer->rr->weight)
+	    if (peer->ema * peer->rr->conns * best->rr->weight !=
+		best->ema * best->rr->conns * peer->rr->weight)
 	    {
                 continue;
             }
@@ -376,9 +376,9 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
     if (now - best->rr->checked > best->rr->fail_timeout) {
         best->rr->checked = now;
     }
-    ngx_log_debug5(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                   "get least time peer %p c:%ui r:%ui s:%ui n:%ui", best,
-		   best->rr->conns, best->avg_time, best->sum, (ngx_uint_t)best->n);
+    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+                   "get least time peer %p c:%ui ema:%ui",
+		   best, best->rr->conns, best->ema);
 
     pc->sockaddr = best->rr->sockaddr;
     pc->socklen = best->rr->socklen;
@@ -435,18 +435,7 @@ failed:
 static inline void
 ngx_http_upstream_least_time_avg(ngx_http_upstream_least_time_peer_t *peer, ngx_msec_t time)
 {
-    peer->samples[peer->t++] = time;
-    peer->t &= MAX_SAMPLES_MASK;
-
-    if (peer->n < MAX_SAMPLES) peer->n++;
-
-    if (peer->t == peer->h) {
-	peer->sum -= peer->samples[peer->h++];
-	peer->h &= MAX_SAMPLES_MASK;
-    } 
-
-    peer->sum += time;
-    peer->avg_time = peer->sum/peer->n;
+    peer->ema = (ngx_msec_t)(((double)time * EMA_FACTOR) + ((double)peer->ema * (1 - EMA_FACTOR)));
 }
 
 void
@@ -496,8 +485,8 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
     ngx_http_upstream_rr_peer_unlock(ltp->peers->rr, peer->rr);
 
     ngx_log_debug6(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                   "free least time peer %p c:%ui r:%ui cfg:%ui i:%ui t:%ui", 
-		   peer, peer->rr->conns, peer->avg_time, ltcf->config, inflight, rsptime);
+                   "free least time peer %p c:%ui ema:%ui cfg:%ui i:%ui t:%ui",
+		   peer, peer->rr->conns, peer->ema, ltcf->config, inflight, rsptime);
 }
 
 #if (NGX_HTTP_UPSTREAM_ZONE)
