@@ -274,6 +274,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
         }
 
         if (peer->rr->down) {
+	    peer->ema = 0;
             continue;
         }
 
@@ -301,15 +302,20 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
             p = i;
 
         } else if (peer->rr->conns * best->rr->weight == best->rr->conns * peer->rr->weight) {
-	    if (peer->ema * peer->rr->conns * best->rr->weight <
-		best->ema * best->rr->conns * peer->rr->weight)
-	    {
+	    if (peer->ema && best->ema) {
+		if (peer->ema < best->ema) {
+		    best = peer;
+		    many = 0;
+		    p = i;
+		} else if (peer->ema == best->ema) {
+		    many = 1;
+		}
+	    } else if (!peer->ema && !best->ema) {
+		many = 1;
+	    } else if (peer->ema && !best->ema) {
 		best = peer;
 		many = 0;
 		p = i;
-	    } else if (peer->ema * peer->rr->conns * best->rr->weight ==
-		       best->ema * best->rr->conns * peer->rr->weight) {
-		many = 1;
 	    }
         }
     }
