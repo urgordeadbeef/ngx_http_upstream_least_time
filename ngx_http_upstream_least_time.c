@@ -126,6 +126,21 @@ ngx_http_upstream_init_least_time_peer(ngx_http_request_t *r,
     return NGX_OK;
 }
 
+static size_t
+ngx_least_time_score(ngx_http_upstream_rr_peer_t *p)
+{
+    ngx_msec_t time = GET_AVG_TIME(p);
+    size_t score;
+
+    if (time) {
+	score = time * (1 + p->conns/p->weight);
+    } else {
+	score = (1 + p->conns/p->weight);
+    }
+
+    return score;
+}
+
 static ngx_int_t
 ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 {
@@ -138,6 +153,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
     ngx_uint_t                     i, n, p, many;
     ngx_http_upstream_rr_peer_t   *peer, *best;
     ngx_http_upstream_rr_peers_t  *peers;
+    size_t			   pscore = 0, bscore = 0;
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
                    "get least time peer, try: %ui", pc->tries);
@@ -186,7 +202,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 
 #if (NGX_HTTP_UPSTREAM_CHECK)
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                "get least_conn peer, check_index: %ui",
+                "get least time peer, check_index: %ui",
                 peer->check_index);
     
         if (ngx_http_upstream_check_peer_down(peer->check_index)) {
@@ -211,14 +227,19 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
          * based on round-robin
          */
 
-        if (best == NULL
-            || GET_AVG_TIME(peer) * best->weight < GET_AVG_TIME(best) * peer->weight)
+	pscore = ngx_least_time_score(peer);	
+	if (best) {
+	    bscore = ngx_least_time_score(best);
+	}
+
+        if (best == NULL || pscore < bscore)
         {
             best = peer;
+	    bscore = pscore;
             many = 0;
             p = i;
 
-        } else if (GET_AVG_TIME(peer) * best->weight == GET_AVG_TIME(best) * peer->weight) {
+        } else if (pscore == bscore) {
             many = 1;
         }
     }
@@ -251,18 +272,17 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 
 #if (NGX_HTTP_UPSTREAM_CHECK)
 	    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-		    "get least_conn peer, check_index: %ui",
+		    "get least time peer, check_index: %ui",
 		    peer->check_index);
 	
 	    if (ngx_http_upstream_check_peer_down(peer->check_index)) {
 		continue;
 	    }
 #endif
+	    pscore = ngx_least_time_score(peer);	
 
-	    if (GET_AVG_TIME(peer) * best->weight == GET_AVG_TIME(best) * peer->weight) {
-		if (peer->conns * best->weight > best->conns * peer->weight) {
-		    continue;
-		}
+	    if (pscore != bscore) {
+		continue;
 	    }
 
             if (peer->max_fails
@@ -295,8 +315,8 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
     if (now - best->checked > best->fail_timeout) {
         best->checked = now;
     }
-    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                   "get least time peer %p response %ui", best, GET_AVG_TIME(best));
+    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+                   "get least time peer %p response %ui score %uz", best, GET_AVG_TIME(best), bscore);
 
     pc->sockaddr = best->sockaddr;
     pc->socklen = best->socklen;
