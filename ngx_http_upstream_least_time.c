@@ -129,11 +129,10 @@ ngx_http_upstream_init_least_time_peer(ngx_http_request_t *r,
 static size_t
 ngx_least_time_score(ngx_http_upstream_rr_peer_t *p)
 {
-    ngx_msec_t time = GET_AVG_TIME(p) | 0x01; 
+    ngx_msec_t time = GET_AVG_TIME(p) | 0x01;
     size_t score;
 
-
-    score = time * (1 + p->conns/p->weight);
+    score = time * (1 + (p->conns >> 4)/p->weight);
 
     return score;
 }
