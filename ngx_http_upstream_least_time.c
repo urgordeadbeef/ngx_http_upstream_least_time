@@ -193,7 +193,6 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
         }
 
         if (peer->down) {
-	    SET_AVG_TIME(peer, 1);
             continue;
         }
 
@@ -203,7 +202,6 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
                 peer->check_index);
     
         if (ngx_http_upstream_check_peer_down(peer->check_index)) {
-	    SET_AVG_TIME(peer, 1);
             continue;
         }
 #endif
@@ -230,7 +228,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 	    bscore = ngx_least_time_score(best);
 	}
 
-        if (best == NULL || pscore < bscore)
+        if (best == NULL || (pscore < bscore && peer != rrp->current))
         {
             best = peer;
 	    bscore = pscore;
@@ -300,7 +298,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
             if (peer->effective_weight < peer->weight) {
                 peer->effective_weight++;
             }
-
+	    
             if (peer->current_weight > best->current_weight) {
                 best = peer;
                 p = i;
@@ -392,6 +390,10 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
                    "free least time peer %ui %ui response %ui", pc->tries, state, u->state->response_time);
 
     ngx_http_upstream_free_round_robin_peer(pc, rrp, state);
+
+    ngx_http_upstream_rr_peers_rlock(rrp->peers);
+    ngx_http_upstream_rr_peer_lock(rrp->peers, peer);
+
     inflight = !(p->upstream_done || (p->upstream_eof && p->length == -1));
 
     switch (ltcf->config) {
@@ -412,6 +414,18 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
     ngx_log_debug4(NGX_LOG_DEBUG_HTTP, pc->log, 0,
                    "free least time peer %p  avg time %ui config %ui inflight %ui", 
 		   peer, GET_AVG_TIME(peer), ltcf->config, inflight);
+
+#if (NGX_HTTP_UPSTREAM_CHECK)
+    if (ngx_http_upstream_check_peer_down(peer->check_index)) {
+	ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0, 
+		"free least time reset response time for failed peer %p", peer);
+	SET_AVG_TIME(peer, 0);		    
+    }
+#endif
+
+    ngx_http_upstream_rr_peer_unlock(rrp->peers, peer);
+    ngx_http_upstream_rr_peers_unlock(rrp->peers);
+
 }
 
 static char *
