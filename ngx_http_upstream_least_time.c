@@ -132,11 +132,7 @@ ngx_least_time_score(ngx_http_upstream_rr_peer_t *p)
     ngx_msec_t time = GET_AVG_TIME(p);
     size_t score;
 
-    if (time) {
-	score = time * (1 + p->conns/p->weight);
-    } else {
-	score = (1 + p->conns/p->weight);
-    }
+    score = (1 + time) * (1 + p->conns/p->weight);
 
     return score;
 }
@@ -197,6 +193,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
         }
 
         if (peer->down) {
+	    SET_AVG_TIME(peer, 1);
             continue;
         }
 
@@ -206,6 +203,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
                 peer->check_index);
     
         if (ngx_http_upstream_check_peer_down(peer->check_index)) {
+	    SET_AVG_TIME(peer, 1);
             continue;
         }
 #endif
