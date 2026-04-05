@@ -84,9 +84,16 @@ ngx_http_upstream_least_time_create_conf(ngx_conf_t *cf)
 }   
 
 #define LRT(p) ((ngx_lrt_t *)(p)->spare)
-#define alpha 0.1
+#define alpha 0.1818
 #define k 2
-#define EMA(lrt) (alpha*(lrt)->time*10 + (1 - alpha)*(lrt->ema))
+#define EMA(lrt) ((ngx_uint_t)(alpha*((float)(lrt)->time)*1000 + (1.0 - alpha)*((float)(lrt->ema))))
+#define lrt_update_time(lrt, t) do {	\
+    if (t == (ngx_msec_t) - 1)		\
+	break;				\
+    lrt->time = t;			\
+    lrt->ema = EMA(lrt);		\
+} while(0)
+
 
 ngx_int_t
 ngx_http_upstream_init_least_time(ngx_conf_t *cf,
@@ -133,10 +140,12 @@ ngx_least_time_score(ngx_http_upstream_rr_peer_t *p)
 {
     ngx_uint_t score;
     ngx_lrt_t *lrt = LRT(p);
-    ngx_uint_t maxconns = lrt->maxconns | 0x01;
-    ngx_uint_t x = p->conns/maxconns;
 
-    score = (lrt->ema/p->weight) * (1 + k*x*x/p->weight);
+    score = (ngx_uint_t)((float)(0.8*lrt->ema) * (float)(0.2*p->conns)*1000.0);
+
+    if (score == 0) {
+	score = p->conns;
+    }
 
     return score;
 }
@@ -232,14 +241,14 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 	    bscore = ngx_least_time_score(best);
 	}
 
-        if (best == NULL || pscore < bscore)
+	if (best == NULL || pscore * best->weight < bscore * peer->weight)
         {
             best = peer;
 	    bscore = pscore;
             many = 0;
             p = i;
 
-        } else if (pscore == bscore) {
+        } else if (pscore * best->weight == bscore * peer->weight) {
             many = 1;
         }
     }
@@ -281,11 +290,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 #endif
 	    pscore = ngx_least_time_score(peer);	
 
-	    if (pscore != bscore) {
-		continue;
-	    }
-
-	    if (peer == rrp->current) {
+	    if (pscore * best->weight != bscore * peer->weight) {
 		continue;
 	    }
 
@@ -299,7 +304,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
             if (peer->max_conns && peer->conns >= peer->max_conns) {
                 continue;
             }
-
+	    
             peer->current_weight += peer->effective_weight;
             total += peer->effective_weight;
 
@@ -309,6 +314,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 
             if (peer->current_weight > best->current_weight) {
                 best = peer;
+		bscore = pscore;
                 p = i;
             }
         }
@@ -405,28 +411,19 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
     ngx_http_upstream_rr_peers_rlock(rrp->peers);
     ngx_http_upstream_rr_peer_lock(rrp->peers, peer);
 
-    if (peer->max_conns) {
-	lrt->maxconns = peer->max_conns;
-    } else if (peer->conns > lrt->maxconns) {
-	lrt->maxconns = peer->conns;
-    }
-    
     inflight = !(p->upstream_done || (p->upstream_eof && p->length == -1));
     
     switch (ltcf->config) {
     case NGX_LEAST_TIME_HEADER:
-	lrt->time = u->state->header_time;
-	lrt->ema = EMA(lrt);
+	lrt_update_time(lrt, u->state->header_time);
 	break;
     case NGX_LEAST_TIME_LAST_BYTE:
 	if (!inflight) {
-	    lrt->time = u->state->response_time;
-	    lrt->ema = EMA(lrt);
+	    lrt_update_time(lrt, u->state->response_time);
 	}
 	break;
     case NGX_LEAST_TIME_INFLIGHT_BYTES:
-	lrt->time = u->state->response_time;
-	lrt->ema = EMA(lrt);
+	lrt_update_time(lrt, u->state->response_time);
 	break;
     default:
 	break;
