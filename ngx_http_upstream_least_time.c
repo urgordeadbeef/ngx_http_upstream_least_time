@@ -83,8 +83,10 @@ ngx_http_upstream_least_time_create_conf(ngx_conf_t *cf)
     return conf;
 }   
 
-#define GET_AVG_TIME(p) ((ngx_msec_t)((p)->spare[0]))
-#define SET_AVG_TIME(p, t) (p)->spare[0] = t
+#define LRT(p) ((ngx_lrt_t *)(p)->spare)
+#define alpha 0.1
+#define k 2
+#define EMA(lrt) (alpha*(lrt)->time*10 + (1 - alpha)*(lrt->ema))
 
 ngx_int_t
 ngx_http_upstream_init_least_time(ngx_conf_t *cf,
@@ -126,13 +128,15 @@ ngx_http_upstream_init_least_time_peer(ngx_http_request_t *r,
     return NGX_OK;
 }
 
-static size_t
+static ngx_uint_t
 ngx_least_time_score(ngx_http_upstream_rr_peer_t *p)
 {
-    ngx_msec_t time = GET_AVG_TIME(p) | 0x01;
-    size_t score;
+    ngx_uint_t score;
+    ngx_lrt_t *lrt = LRT(p);
+    ngx_uint_t maxconns = lrt->maxconns | 0x01;
+    ngx_uint_t x = p->conns/maxconns;
 
-    score = time * (1 + (p->conns*0.2)/p->weight);
+    score = (lrt->ema/p->weight) * (1 + k*x*x/p->weight);
 
     return score;
 }
@@ -149,7 +153,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
     ngx_uint_t                     i, n, p, many;
     ngx_http_upstream_rr_peer_t   *peer, *best;
     ngx_http_upstream_rr_peers_t  *peers;
-    size_t			   pscore = 0, bscore = 0;
+    ngx_uint_t			   pscore = 0, bscore = 0;
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
                    "get least time peer, try: %ui", pc->tries);
@@ -202,7 +206,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
                 peer->check_index);
     
         if (ngx_http_upstream_check_peer_down(peer->check_index)) {
-            continue;
+	    continue;
         }
 #endif
 
@@ -228,7 +232,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 	    bscore = ngx_least_time_score(best);
 	}
 
-        if (best == NULL || (pscore < bscore && peer != rrp->current))
+        if (best == NULL || pscore < bscore)
         {
             best = peer;
 	    bscore = pscore;
@@ -281,6 +285,10 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 		continue;
 	    }
 
+	    if (peer == rrp->current) {
+		continue;
+	    }
+
             if (peer->max_fails
                 && peer->fails >= peer->max_fails
                 && now - peer->checked <= peer->fail_timeout)
@@ -298,7 +306,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
             if (peer->effective_weight < peer->weight) {
                 peer->effective_weight++;
             }
-	    
+
             if (peer->current_weight > best->current_weight) {
                 best = peer;
                 p = i;
@@ -311,8 +319,9 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
     if (now - best->checked > best->fail_timeout) {
         best->checked = now;
     }
-    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                   "get least time peer %p response %ui score %uz", best, GET_AVG_TIME(best), bscore);
+    ngx_log_debug4(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+                   "get least time peer %p response %ui ema %ui score %ui", 
+		   best, LRT(best)->time, LRT(best)->ema, bscore);
 
     pc->sockaddr = best->sockaddr;
     pc->socklen = best->socklen;
@@ -372,16 +381,18 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
 {
     ngx_http_upstream_least_time_peer_data_t  *d = data;
     ngx_http_upstream_rr_peer_data_t  *rrp = d->rrp;
+    ngx_lrt_t *lrt;
 
     time_t				  now;
     ngx_http_upstream_rr_peer_t		 *peer;
     ngx_http_upstream_t			 *u;
-    ngx_uint_t				  inflight;
+    ngx_int_t				  inflight;
     ngx_event_pipe_t			 *p;
 
     peer = rrp->current;
     u = d->request->upstream;
     p = u->pipe;
+    lrt = LRT(peer);
 
     ngx_http_upstream_least_time_conf_t *ltcf = ngx_http_conf_upstream_srv_conf(u->conf->upstream, 
 	    ngx_http_upstream_least_time_module);
@@ -394,38 +405,49 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
     ngx_http_upstream_rr_peers_rlock(rrp->peers);
     ngx_http_upstream_rr_peer_lock(rrp->peers, peer);
 
+    if (peer->max_conns) {
+	lrt->maxconns = peer->max_conns;
+    } else if (peer->conns > lrt->maxconns) {
+	lrt->maxconns = peer->conns;
+    }
+    
     inflight = !(p->upstream_done || (p->upstream_eof && p->length == -1));
-
+    
     switch (ltcf->config) {
     case NGX_LEAST_TIME_HEADER:
-	SET_AVG_TIME(peer, (u->state->header_time + GET_AVG_TIME(peer))/2);
+	lrt->time = u->state->header_time;
+	lrt->ema = EMA(lrt);
 	break;
     case NGX_LEAST_TIME_LAST_BYTE:
 	if (!inflight) {
-	    SET_AVG_TIME(peer, (u->state->response_time + GET_AVG_TIME(peer))/2);
+	    lrt->time = u->state->response_time;
+	    lrt->ema = EMA(lrt);
 	}
 	break;
     case NGX_LEAST_TIME_INFLIGHT_BYTES:
-	SET_AVG_TIME(peer, (u->state->response_time + GET_AVG_TIME(peer))/2);
+	lrt->time = u->state->response_time;
+	lrt->ema = EMA(lrt);
 	break;
     default:
 	break;
     }
-    ngx_log_debug4(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                   "free least time peer %p  avg time %ui config %ui inflight %ui", 
-		   peer, GET_AVG_TIME(peer), ltcf->config, inflight);
 
 #if (NGX_HTTP_UPSTREAM_CHECK)
-    if (ngx_http_upstream_check_peer_down(peer->check_index)) {
-	ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0, 
-		"free least time reset response time for failed peer %p", peer);
-	SET_AVG_TIME(peer, 0);		    
-    }
-#endif
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+	"get least time peer, check_index: %ui",
+	peer->check_index);
 
+	if (ngx_http_upstream_check_peer_down(peer->check_index)) {
+	    lrt->ema = 0;
+	}
+#endif
+    
+    ngx_log_debug5(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+                   "free least time peer %p  time %ui ema %ui config %ui inflight %i", 
+		   peer, LRT(peer)->time, LRT(peer)->ema, ltcf->config, inflight);
+    
     ngx_http_upstream_rr_peer_unlock(rrp->peers, peer);
     ngx_http_upstream_rr_peers_unlock(rrp->peers);
-
 }
 
 static char *

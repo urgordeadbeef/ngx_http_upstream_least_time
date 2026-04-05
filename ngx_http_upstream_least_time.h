@@ -23,6 +23,12 @@ typedef struct {
     ngx_uint_t config;
 } ngx_http_upstream_least_time_conf_t;
 
+typedef struct {
+    ngx_msec_t time;
+    ngx_uint_t ema;
+    ngx_uint_t maxconns;
+} ngx_lrt_t;
+
 typedef struct ngx_http_upstream_least_time_peers_s  ngx_http_upstream_least_time_peers_t;
 
 typedef struct {
