@@ -85,8 +85,9 @@ ngx_http_upstream_least_time_create_conf(ngx_conf_t *cf)
 
 #define LRT(p) ((ngx_lrt_t *)(p)->spare)
 #define alpha 0.1818
-#define k 2
-#define EMA(lrt) ((ngx_uint_t)(alpha*((float)(lrt)->time)*1000 + (1.0 - alpha)*((float)(lrt->ema))))
+#define k 1000
+#define START_EMA 1000 /* 1ms */
+#define EMA(lrt) ((ngx_uint_t)(alpha*((float)(lrt)->time)*k + (1.0 - alpha)*((float)(lrt->ema))))
 #define lrt_update_time(lrt, t) do {	\
     if (t == (ngx_msec_t) - 1)		\
 	break;				\
@@ -141,13 +142,21 @@ ngx_least_time_score(ngx_http_upstream_rr_peer_t *p)
     ngx_uint_t score;
     ngx_lrt_t *lrt = LRT(p);
 
-    score = (ngx_uint_t)((float)(0.8*lrt->ema) * (float)(0.2*p->conns)*1000.0);
+    ngx_uint_t cn, cd, cf, ema;
 
-    if (score == 0) {
-	score = p->conns;
+    if (lrt->ema == 0) {
+	lrt->ema = START_EMA;
     }
+    
+    ema = lrt->ema/k;
 
-    return score;
+    cn = (p->conns + 1) * lrt->ema * k;
+    cd = (p->conns + 1) + lrt->ema;
+    cf = cn/cd/k;
+
+    lrt->score = ema*cf;
+
+    return lrt->score;
 }
 
 static ngx_int_t
@@ -162,7 +171,6 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
     ngx_uint_t                     i, n, p, many;
     ngx_http_upstream_rr_peer_t   *peer, *best;
     ngx_http_upstream_rr_peers_t  *peers;
-    ngx_uint_t			   pscore = 0, bscore = 0;
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
                    "get least time peer, try: %ui", pc->tries);
@@ -236,19 +244,15 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
          * based on round-robin
          */
 
-	pscore = ngx_least_time_score(peer);	
-	if (best) {
-	    bscore = ngx_least_time_score(best);
-	}
+	ngx_least_time_score(peer);	
 
-	if (best == NULL || pscore * best->weight < bscore * peer->weight)
+	if (best == NULL || LRT(peer)->score * best->weight < LRT(best)->score * peer->weight)
         {
             best = peer;
-	    bscore = pscore;
             many = 0;
             p = i;
 
-        } else if (pscore * best->weight == bscore * peer->weight) {
+        } else if (LRT(peer)->score * best->weight == LRT(best)->score * peer->weight) {
             many = 1;
         }
     }
@@ -288,9 +292,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 		continue;
 	    }
 #endif
-	    pscore = ngx_least_time_score(peer);	
-
-	    if (pscore * best->weight != bscore * peer->weight) {
+	    if (LRT(peer)->score * best->weight != LRT(best)->score * peer->weight) {
 		continue;
 	    }
 
@@ -314,7 +316,6 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 
             if (peer->current_weight > best->current_weight) {
                 best = peer;
-		bscore = pscore;
                 p = i;
             }
         }
@@ -325,9 +326,9 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
     if (now - best->checked > best->fail_timeout) {
         best->checked = now;
     }
-    ngx_log_debug4(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                   "get least time peer %p response %ui ema %ui score %ui", 
-		   best, LRT(best)->time, LRT(best)->ema, bscore);
+    ngx_log_debug5(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+                   "get least time peer %p response %ui ema %ui conns %ui score %ui", 
+		   best, LRT(best)->time, LRT(best)->ema, best->conns, LRT(best)->score);
 
     pc->sockaddr = best->sockaddr;
     pc->socklen = best->socklen;
@@ -403,8 +404,8 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
     ngx_http_upstream_least_time_conf_t *ltcf = ngx_http_conf_upstream_srv_conf(u->conf->upstream, 
 	    ngx_http_upstream_least_time_module);
     
-    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                   "free least time peer %ui %ui response %ui", pc->tries, state, u->state->response_time);
+//    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+//                   "free least time peer %ui %ui response %ui", pc->tries, state, u->state->response_time);
 
     ngx_http_upstream_free_round_robin_peer(pc, rrp, state);
 
