@@ -14,14 +14,14 @@
 #include <ngx_http.h>
 
 enum {
-    NGX_LEAST_TIME_HEADER = 1,
-    NGX_LEAST_TIME_LAST_BYTE = 2,
-    NGX_LEAST_TIME_INFLIGHT_BYTES = 3,
+    NGX_LEAST_RESP_HEADER = 1,
+    NGX_LEAST_RESP_LAST_BYTE = 2,
+    NGX_LEAST_RESP_INFLIGHT_BYTES = 3,
 };
 
 typedef struct {
     ngx_uint_t config;
-} ngx_http_upstream_least_time_conf_t;
+} ngx_http_upstream_least_response_conf_t;
 
 typedef struct {
     ngx_msec_t time;
@@ -29,12 +29,12 @@ typedef struct {
     ngx_uint_t score;
 } ngx_lrt_t;
 
-typedef struct ngx_http_upstream_least_time_peers_s  ngx_http_upstream_least_time_peers_t;
+typedef struct ngx_http_upstream_least_response_peers_s  ngx_http_upstream_least_response_peers_t;
 
 typedef struct {
     ngx_http_request_t			   *request;
     ngx_http_upstream_rr_peer_data_t	   *rrp;
-} ngx_http_upstream_least_time_peer_data_t;
+} ngx_http_upstream_least_response_peer_data_t;
 
 ngx_int_t ngx_http_upstream_init_least_time(ngx_conf_t *cf,
     ngx_http_upstream_srv_conf_t *us);

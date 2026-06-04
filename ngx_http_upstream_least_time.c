@@ -13,7 +13,7 @@
                                     + ((p)->next ? (p)->next->tries : 0))
 
 
-static char *ngx_http_upstream_least_time(ngx_conf_t *cf, ngx_command_t *cmd,
+static char *ngx_http_upstream_least_response(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
 
 #if (NGX_HTTP_SSL)
@@ -23,14 +23,14 @@ static void ngx_http_upstream_empty_save_session(ngx_peer_connection_t *pc,
     void *data);
 #endif
 
-static void *ngx_http_upstream_least_time_create_conf(ngx_conf_t *cf);
+static void *ngx_http_upstream_least_response_create_conf(ngx_conf_t *cf);
 
 
-static ngx_command_t  ngx_http_upstream_least_time_commands[] = {
+static ngx_command_t  ngx_http_upstream_least_response_commands[] = {
 
     { ngx_string("least_response"),
       NGX_HTTP_UPS_CONF|NGX_CONF_TAKE12,
-      ngx_http_upstream_least_time,
+      ngx_http_upstream_least_response,
       NGX_HTTP_SRV_CONF_OFFSET,
       0,
       NULL },
@@ -39,24 +39,24 @@ static ngx_command_t  ngx_http_upstream_least_time_commands[] = {
 };
 
 
-static ngx_http_module_t  ngx_http_upstream_least_time_module_ctx = {
+static ngx_http_module_t  ngx_http_upstream_least_response_module_ctx = {
     NULL,					/* preconfiguration */
     NULL,					/* postconfiguration */
 
     NULL,					/* create main configuration */
     NULL,					/* init main configuration */
 
-    ngx_http_upstream_least_time_create_conf,   /* create server configuration */
+    ngx_http_upstream_least_response_create_conf,   /* create server configuration */
     NULL,					/* merge server configuration */
 
     NULL,					/* create location configuration */
     NULL					/* merge location configuration */
 };
 
-ngx_module_t  ngx_http_upstream_least_time_module = {
+ngx_module_t  ngx_http_upstream_least_response_module = {
     NGX_MODULE_V1,
-    &ngx_http_upstream_least_time_module_ctx, /* module context */
-    ngx_http_upstream_least_time_commands, /* module directives */
+    &ngx_http_upstream_least_response_module_ctx, /* module context */
+    ngx_http_upstream_least_response_commands, /* module directives */
     NGX_HTTP_MODULE,                       /* module type */
     NULL,                                  /* init master */
     NULL,                                  /* init module */
@@ -70,9 +70,9 @@ ngx_module_t  ngx_http_upstream_least_time_module = {
 
 
 static void *
-ngx_http_upstream_least_time_create_conf(ngx_conf_t *cf)
+ngx_http_upstream_least_response_create_conf(ngx_conf_t *cf)
 {
-    ngx_http_upstream_least_time_conf_t *conf;
+    ngx_http_upstream_least_response_conf_t *conf;
 
     conf = ngx_pcalloc(cf->pool, sizeof(*conf));
 
@@ -115,12 +115,12 @@ ngx_int_t
 ngx_http_upstream_init_least_time_peer(ngx_http_request_t *r,
     ngx_http_upstream_srv_conf_t *us)
 {
-    ngx_http_upstream_least_time_peer_data_t *data = NULL;
+    ngx_http_upstream_least_response_peer_data_t *data = NULL;
 
     if (ngx_http_upstream_init_round_robin_peer(r, us) != NGX_OK) {
         return NGX_ERROR;
     }
-    data = ngx_palloc(r->pool, sizeof(ngx_http_upstream_least_time_peer_data_t));
+    data = ngx_palloc(r->pool, sizeof(ngx_http_upstream_least_response_peer_data_t));
 
     if (NULL == data) {
 	return NGX_ERROR;
@@ -162,7 +162,7 @@ ngx_least_time_score(ngx_http_upstream_rr_peer_t *p)
 static ngx_int_t
 ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 {
-    ngx_http_upstream_least_time_peer_data_t *d = data;
+    ngx_http_upstream_least_response_peer_data_t *d = data;
     ngx_http_upstream_rr_peer_data_t  *rrp = d->rrp;
 
     time_t                         now;
@@ -173,7 +173,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
     ngx_http_upstream_rr_peers_t  *peers;
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                   "get least time peer, try: %ui", pc->tries);
+                   "get least response peer, try: %ui", pc->tries);
 
     if (rrp->peers->single) {
         return ngx_http_upstream_get_round_robin_peer(pc, rrp);
@@ -219,7 +219,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 
 #if (NGX_HTTP_UPSTREAM_CHECK)
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                "get least time peer, check_index: %ui",
+                "get least response peer, check_index: %ui",
                 peer->check_index);
 
         if (ngx_http_upstream_check_peer_down(peer->check_index)) {
@@ -259,14 +259,14 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 
     if (best == NULL) {
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                       "get least time peer, no peer found");
+                       "get least response peer, no peer found");
 
         goto failed;
     }
 
     if (many) {
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                       "get least time peer, many");
+                       "get least response peer, many");
 
         for (peer = best, i = p;
              peer;
@@ -285,7 +285,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 
 #if (NGX_HTTP_UPSTREAM_CHECK)
 	    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-		    "get least time peer, check_index: %ui",
+		    "get least response peer, check_index: %ui",
 		    peer->check_index);
 
 	    if (ngx_http_upstream_check_peer_down(peer->check_index)) {
@@ -327,7 +327,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
         best->checked = now;
     }
     ngx_log_debug5(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                   "get least time peer %p response %ui ema %ui conns %ui score %ui",
+                   "get least response peer %p resp %ui ema %ui conns %ui score %ui",
 		   best, LRT(best)->time, LRT(best)->ema, best->conns, LRT(best)->score);
 
     pc->sockaddr = best->sockaddr;
@@ -351,7 +351,7 @@ failed:
 
     if (peers->next) {
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                       "get least time peer, backup servers");
+                       "get least response peer, backup servers");
 
         n = (rrp->peers->number + (8 * sizeof(uintptr_t) - 1))
                 / (8 * sizeof(uintptr_t));
@@ -386,7 +386,7 @@ void
 ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
     ngx_uint_t state)
 {
-    ngx_http_upstream_least_time_peer_data_t  *d = data;
+    ngx_http_upstream_least_response_peer_data_t  *d = data;
     ngx_http_upstream_rr_peer_data_t  *rrp = d->rrp;
     ngx_lrt_t *lrt;
 
@@ -401,11 +401,11 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
     p = u->pipe;
     lrt = LRT(peer);
 
-    ngx_http_upstream_least_time_conf_t *ltcf = ngx_http_conf_upstream_srv_conf(u->conf->upstream,
-	    ngx_http_upstream_least_time_module);
+    ngx_http_upstream_least_response_conf_t *ltcf = ngx_http_conf_upstream_srv_conf(u->conf->upstream,
+	    ngx_http_upstream_least_response_module);
 
 //    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-//                   "free least time peer %ui %ui response %ui", pc->tries, state, u->state->response_time);
+//                   "free least response peer %ui %ui response %ui", pc->tries, state, u->state->response_time);
 
     ngx_http_upstream_free_round_robin_peer(pc, rrp, state);
 
@@ -415,15 +415,15 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
     inflight = !(p->upstream_done || (p->upstream_eof && p->length == -1));
 
     switch (ltcf->config) {
-    case NGX_LEAST_TIME_HEADER:
+    case NGX_LEAST_RESP_HEADER:
 	lrt_update_time(lrt, u->state->header_time);
 	break;
-    case NGX_LEAST_TIME_LAST_BYTE:
+    case NGX_LEAST_RESP_LAST_BYTE:
 	if (!inflight) {
 	    lrt_update_time(lrt, u->state->response_time);
 	}
 	break;
-    case NGX_LEAST_TIME_INFLIGHT_BYTES:
+    case NGX_LEAST_RESP_INFLIGHT_BYTES:
 	lrt_update_time(lrt, u->state->response_time);
 	break;
     default:
@@ -432,7 +432,7 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
 
 #if (NGX_HTTP_UPSTREAM_CHECK)
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-	"get least time peer, check_index: %ui",
+	"get least response peer, check_index: %ui",
 	peer->check_index);
 
 	if (ngx_http_upstream_check_peer_down(peer->check_index)) {
@@ -441,7 +441,7 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
 #endif
 
     ngx_log_debug5(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                   "free least time peer %p  time %ui ema %ui config %ui inflight %i", 
+                   "free least response peer %p  time %ui ema %ui config %ui inflight %i",
 		   peer, LRT(peer)->time, LRT(peer)->ema, ltcf->config, inflight);
 
     ngx_http_upstream_rr_peer_unlock(rrp->peers, peer);
@@ -449,9 +449,9 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
 }
 
 static char *
-ngx_http_upstream_least_time(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+ngx_http_upstream_least_response(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    ngx_http_upstream_least_time_conf_t *ltcf = conf;
+    ngx_http_upstream_least_response_conf_t *ltcf = conf;
     ngx_http_upstream_srv_conf_t  *uscf = ngx_http_conf_get_module_srv_conf(cf,
 	    ngx_http_upstream_module);
 
@@ -468,14 +468,14 @@ ngx_http_upstream_least_time(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     if (cf->args->nelts == 2 && value[1].len == (sizeof("header") - 1) &&
 	!ngx_strncmp(value[1].data, (u_char *)"header", sizeof("header") - 1)) {
-	ltcf->config = NGX_LEAST_TIME_HEADER;
+	ltcf->config = NGX_LEAST_RESP_HEADER;
     } else if (value[1].len == (sizeof("last_byte") - 1) &&
 	       !ngx_strncmp(value[1].data, (u_char *)"last_byte", sizeof("last_byte") - 1)) {
 	if (cf->args->nelts == 3 && value[2].len == (sizeof("inflight") - 1) &&
 	    !ngx_strncmp(value[2].data, (u_char *)"inflight", sizeof("inflight") - 1)) {
-	    ltcf->config = NGX_LEAST_TIME_INFLIGHT_BYTES;
+	    ltcf->config = NGX_LEAST_RESP_INFLIGHT_BYTES;
 	} else {
-	    ltcf->config = NGX_LEAST_TIME_LAST_BYTE;
+	    ltcf->config = NGX_LEAST_RESP_LAST_BYTE;
 	}
     }
 

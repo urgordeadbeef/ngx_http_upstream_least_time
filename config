@@ -1,4 +1,4 @@
-ngx_addon_name=ngx_http_upstream_least_time_module
+ngx_addon_name=ngx_http_upstream_least_response_module
 
 NGX_HTTP_UPSTREAM_LEAST_TIME_SRCS=$ngx_addon_dir/ngx_http_upstream_least_time.c
 
