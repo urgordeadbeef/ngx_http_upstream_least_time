@@ -1,8 +1,8 @@
-# ngx_http_upstream_least_time
+# ngx_http_upstream_response_time
 
 # Directive
 
-least_time
+least_response
 -------------
 * Syntax: 	least_response header | last_byte [inflight];
 * Default: 	—
