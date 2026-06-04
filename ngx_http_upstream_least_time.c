@@ -13,7 +13,7 @@
                                     + ((p)->next ? (p)->next->tries : 0))
 
 
-static char *ngx_http_upstream_least_time(ngx_conf_t *cf, ngx_command_t *cmd, 
+static char *ngx_http_upstream_least_time(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
 
 #if (NGX_HTTP_SSL)
@@ -23,12 +23,12 @@ static void ngx_http_upstream_empty_save_session(ngx_peer_connection_t *pc,
     void *data);
 #endif
 
-static void *ngx_http_upstream_least_time_create_conf(ngx_conf_t *cf); 
+static void *ngx_http_upstream_least_time_create_conf(ngx_conf_t *cf);
 
 
 static ngx_command_t  ngx_http_upstream_least_time_commands[] = {
 
-    { ngx_string("least_time"),
+    { ngx_string("least_response"),
       NGX_HTTP_UPS_CONF|NGX_CONF_TAKE12,
       ngx_http_upstream_least_time,
       NGX_HTTP_SRV_CONF_OFFSET,
@@ -70,7 +70,7 @@ ngx_module_t  ngx_http_upstream_least_time_module = {
 
 
 static void *
-ngx_http_upstream_least_time_create_conf(ngx_conf_t *cf) 
+ngx_http_upstream_least_time_create_conf(ngx_conf_t *cf)
 {
     ngx_http_upstream_least_time_conf_t *conf;
 
@@ -81,7 +81,7 @@ ngx_http_upstream_least_time_create_conf(ngx_conf_t *cf)
     }
 
     return conf;
-}   
+}
 
 #define LRT(p) ((ngx_lrt_t *)(p)->spare)
 #define alpha 0.1818
@@ -100,7 +100,7 @@ ngx_int_t
 ngx_http_upstream_init_least_time(ngx_conf_t *cf,
     ngx_http_upstream_srv_conf_t *us)
 {
-    
+
     if (ngx_http_upstream_init_round_robin(cf, us) != NGX_OK) {
         return NGX_ERROR;
     }
@@ -116,7 +116,7 @@ ngx_http_upstream_init_least_time_peer(ngx_http_request_t *r,
     ngx_http_upstream_srv_conf_t *us)
 {
     ngx_http_upstream_least_time_peer_data_t *data = NULL;
-    
+
     if (ngx_http_upstream_init_round_robin_peer(r, us) != NGX_OK) {
         return NGX_ERROR;
     }
@@ -132,7 +132,7 @@ ngx_http_upstream_init_least_time_peer(ngx_http_request_t *r,
 
     r->upstream->peer.get = ngx_http_upstream_get_least_time_peer;
     r->upstream->peer.free = ngx_http_upstream_free_least_time_peer;
-    
+
     return NGX_OK;
 }
 
@@ -147,7 +147,7 @@ ngx_least_time_score(ngx_http_upstream_rr_peer_t *p)
     if (lrt->ema == 0) {
 	lrt->ema = START_EMA;
     }
-    
+
     ema = lrt->ema/k;
 
     cn = (p->conns + 1) * lrt->ema * k;
@@ -192,7 +192,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
     if (peers->config && rrp->config != *peers->config) {
         goto busy;
     }
-#endif      
+#endif
 
     best = NULL;
     total = 0;
@@ -221,7 +221,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
                 "get least time peer, check_index: %ui",
                 peer->check_index);
-    
+
         if (ngx_http_upstream_check_peer_down(peer->check_index)) {
 	    continue;
         }
@@ -244,7 +244,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
          * based on round-robin
          */
 
-	ngx_least_time_score(peer);	
+	ngx_least_time_score(peer);
 
 	if (best == NULL || LRT(peer)->score * best->weight < LRT(best)->score * peer->weight)
         {
@@ -263,7 +263,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 
         goto failed;
     }
-    
+
     if (many) {
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, pc->log, 0,
                        "get least time peer, many");
@@ -287,7 +287,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
 	    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
 		    "get least time peer, check_index: %ui",
 		    peer->check_index);
-	
+
 	    if (ngx_http_upstream_check_peer_down(peer->check_index)) {
 		continue;
 	    }
@@ -306,7 +306,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
             if (peer->max_conns && peer->conns >= peer->max_conns) {
                 continue;
             }
-	    
+
             peer->current_weight += peer->effective_weight;
             total += peer->effective_weight;
 
@@ -327,7 +327,7 @@ ngx_http_upstream_get_least_time_peer(ngx_peer_connection_t *pc, void *data)
         best->checked = now;
     }
     ngx_log_debug5(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                   "get least time peer %p response %ui ema %ui conns %ui score %ui", 
+                   "get least time peer %p response %ui ema %ui conns %ui score %ui",
 		   best, LRT(best)->time, LRT(best)->ema, best->conns, LRT(best)->score);
 
     pc->sockaddr = best->sockaddr;
@@ -401,9 +401,9 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
     p = u->pipe;
     lrt = LRT(peer);
 
-    ngx_http_upstream_least_time_conf_t *ltcf = ngx_http_conf_upstream_srv_conf(u->conf->upstream, 
+    ngx_http_upstream_least_time_conf_t *ltcf = ngx_http_conf_upstream_srv_conf(u->conf->upstream,
 	    ngx_http_upstream_least_time_module);
-    
+
 //    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, pc->log, 0,
 //                   "free least time peer %ui %ui response %ui", pc->tries, state, u->state->response_time);
 
@@ -413,7 +413,7 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
     ngx_http_upstream_rr_peer_lock(rrp->peers, peer);
 
     inflight = !(p->upstream_done || (p->upstream_eof && p->length == -1));
-    
+
     switch (ltcf->config) {
     case NGX_LEAST_TIME_HEADER:
 	lrt_update_time(lrt, u->state->header_time);
@@ -439,11 +439,11 @@ ngx_http_upstream_free_least_time_peer(ngx_peer_connection_t *pc, void *data,
 	    lrt->ema = 0;
 	}
 #endif
-    
+
     ngx_log_debug5(NGX_LOG_DEBUG_HTTP, pc->log, 0,
                    "free least time peer %p  time %ui ema %ui config %ui inflight %i", 
 		   peer, LRT(peer)->time, LRT(peer)->ema, ltcf->config, inflight);
-    
+
     ngx_http_upstream_rr_peer_unlock(rrp->peers, peer);
     ngx_http_upstream_rr_peers_unlock(rrp->peers);
 }
@@ -452,21 +452,21 @@ static char *
 ngx_http_upstream_least_time(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_http_upstream_least_time_conf_t *ltcf = conf;
-    ngx_http_upstream_srv_conf_t  *uscf = ngx_http_conf_get_module_srv_conf(cf, 
+    ngx_http_upstream_srv_conf_t  *uscf = ngx_http_conf_get_module_srv_conf(cf,
 	    ngx_http_upstream_module);
 
-    if (ltcf->config != NGX_CONF_UNSET) { 
+    if (ltcf->config != NGX_CONF_UNSET) {
 	return "is duplicate";
     }
-    
+
     ngx_str_t *value = cf->args->elts;
-    
+
     if (cf->args->nelts < 2 && cf->args->nelts > 3) {
-	ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid format in \"%V\" directive", &cmd->name); 
+	ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid format in \"%V\" directive", &cmd->name);
 	return NGX_CONF_ERROR;
     }
 
-    if (cf->args->nelts == 2 && value[1].len == (sizeof("header") - 1) && 
+    if (cf->args->nelts == 2 && value[1].len == (sizeof("header") - 1) &&
 	!ngx_strncmp(value[1].data, (u_char *)"header", sizeof("header") - 1)) {
 	ltcf->config = NGX_LEAST_TIME_HEADER;
     } else if (value[1].len == (sizeof("last_byte") - 1) &&
@@ -480,7 +480,7 @@ ngx_http_upstream_least_time(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     }
 
     if (cf->args->nelts < 2 && cf->args->nelts > 3 || ltcf->config == NGX_CONF_UNSET) {
-	ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid format in \"%V\" directive", &cmd->name); 
+	ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid format in \"%V\" directive", &cmd->name);
 	return NGX_CONF_ERROR;
     }
 
@@ -500,5 +500,5 @@ ngx_http_upstream_least_time(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
                   |NGX_HTTP_UPSTREAM_BACKUP;
 
     return NGX_CONF_OK;
-}   
+}
 

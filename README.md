@@ -4,7 +4,7 @@
 
 least_time
 -------------
-* Syntax: 	least_time header | last_byte [inflight];
+* Syntax: 	least_response header | last_byte [inflight];
 * Default: 	—
 * Context: 	upstream
 
